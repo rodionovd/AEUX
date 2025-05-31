@@ -1,7 +1,8 @@
 /*jshint esversion: 6, asi: true */
 import BrowserWindow from 'sketch-module-web-view'
 import { getWebview } from 'sketch-module-web-view/remote'
-import UI from 'sketch/ui'
+const sketch = require('sketch/dom');
+const UI = require('sketch/ui');
 
 
 var devName = 'sumUX';
@@ -84,10 +85,6 @@ export default function () {
     webContents.on('flattenCompounds', () => {
         flattenCompounds()
     })
-    // send layer data to Ae
-    webContents.on('rasterizeGroups', () => {
-        rasterizeGroups()
-    })
     // Used to debug
     webContents.on('alert', (str) => {
         UI.alert('Debug:', str)
@@ -129,7 +126,8 @@ export function fetchAEUX () {
     layerCount = 0;
 
     var aeuxData = filterTypes(selection);
-    if (layerCount < 1) {
+    // FIXME: <rodionov> this layerCount counter is silly as it doesn't count what you think it does
+    if (layerCount < 0 ) {
         existingWebview.webContents.executeJavaScript(`setFooterMsg('0 layers sent to Ae')`)
         return 
     }
@@ -246,36 +244,28 @@ export function detachSymbols() {
         layers = layers[0].layers;
     }
 
-    /// run process
-    detachChildren(layers);
+    function detachAllSymbolInstancesAmongLayers(layers) {
+        layers.forEach(layer => {
+            if (layer.type === sketch.Types.SymbolInstance) {
+                layer.detach({ recursively: true });
+                layerCount++;
+            }
+            else if (layer.type === sketch.Types.Group || layer.type === sketch.Types.Artboard) {
+                detachAllSymbolInstancesAmongLayers(sketch.find("SymbolInstance", layer) ?? []);
+            }
+        });
+    }
+
+    detachAllSymbolInstancesAmongLayers(layers);
 
     /// completion message
     let existingWebview = getWebview(webviewIdentifier)
     let lyrs = layerCount        
-    let msg = (lyrs == 1) ? lyrs + ' symbol detached' : lyrs + ' symbols detached'
+    let msg = (lyrs == 1) ? (lyrs + '+ symbol detached') : (lyrs + '+ symbols detached')
     if (!existingWebview) {     // webview is closed
         UI.message(msg)
     } else {
         existingWebview.webContents.executeJavaScript(`setFooterMsg('${msg}')`)
-    }
-
-    /// recursive func
-    function detachChildren(layers) {
-        for (var i = 0; i < layers.length; i++) {
-            var layer = layers[i];
-
-            if ( layer.type == 'Group' ) {
-                detachChildren(layer.layers)
-            }
-            if ( layer.type == 'SymbolInstance' ) {
-                // detachChildren(layer.master.layers);
-                var detatchedGroup = layer.detach();
-				if (detatchedGroup.layers.length < 2) {
-					detatchedGroup.sketchObject.ungroup();
-				}
-                layerCount++;
-            }
-        }
     }
 }
 
@@ -293,8 +283,20 @@ export function flattenCompounds() {
         layers = layers[0].layers;
     }
 
-    /// run process
-    flattenChildren(layers);
+    function flattenAllShapesAmongLayers(layers) {
+        layers.forEach(layer => {
+            if (layer.type === sketch.Types.Shape) {
+                // FIXME: <rodionovd> This should be possible to do via JS API
+                layer.sketchObject.flatten();
+                layerCount++;
+            }
+            else if (layer.type === sketch.Types.Group || layer.type === sketch.Types.Artboard) {
+                detachAllSymbolInstancesAmongLayers(sketch.find("Shape", layer) ?? []);
+            }
+        });
+    }
+
+    flattenAllShapesAmongLayers(layers);
 
     /// completion message
     let existingWebview = getWebview(webviewIdentifier)
@@ -305,76 +307,7 @@ export function flattenCompounds() {
     } else {
         existingWebview.webContents.executeJavaScript(`setFooterMsg('${msg}')`)
     }
-
-    /// recursive func
-    function flattenChildren(layers) {
-        for (var i = 0; i < layers.length; i++) {
-            var layer = layers[i];
-            var layerType = getShapeType(layer.sketchObject);
-
-            if ( layer.type == 'Group' ) {
-                flattenChildren(layer.layers)
-            }
-            if ( layerType == 'CompoundShape' ) {
-                layer.sketchObject.flatten();
-                layerCount++;
-            }
-
-        }
-    }
 }
-//// recursivly detach symbols from masters
-export function rasterizeGroups() {
-    document = require('sketch/dom').getSelectedDocument();
-    selection = document.selectedLayers;
-
-    // reset vars
-    layerCount = 0;
-    var layers = selection.layers;
-
-    // /// if an artboard is selected, process all layers inside of it
-    // if (layers.length > 0 && (layers[0].type == 'Artboard' || layers[0].type == 'SymbolMaster')) {
-    //     layers = layers[0].layers;
-    // }
-    console.log(layers);
-    layers.forEach(layer => {
-        layer.frame
-    })
-    
-
-    // /// run process
-    // detachChildren(layers);
-
-    /// completion message
-    var existingWebview = getWebview(webviewIdentifier)
-    var lyrs = layerCount
-    var msg = (lyrs == 1) ? lyrs + ' group rasterized' : lyrs + ' groups rasterized'
-    if (!existingWebview) {     // webview is closed
-        UI.message(msg)
-    } else {
-        existingWebview.webContents.executeJavaScript(`setFooterMsg('${msg}')`)
-    }
-
-    /// recursive func
-    function detachChildren(layers) {
-        for (var i = 0; i < layers.length; i++) {
-            var layer = layers[i];
-
-            if (layer.type == 'Group') {
-                detachChildren(layer.layers)
-            }
-            if (layer.type == 'SymbolInstance') {
-                // detachChildren(layer.master.layers);
-                var detatchedGroup = layer.detach();
-                if (detatchedGroup.layers.length < 2) {
-                    detatchedGroup.sketchObject.ungroup();
-                }
-                layerCount++;
-            }
-        }
-    }
-}
-
 
 //// get all selected layer data
 function filterTypes(selection) {
@@ -389,7 +322,7 @@ function filterTypes(selection) {
     if (!hasArtboard) { layerCount = -2; return; }
 
     /// if an artboard is selected, process all layers inside of it
-    if ( layers.length > 0 && (layers[0].type == 'Artboard' || layers[0].type == 'SymbolMaster')) {
+    if ( layers.length > 0 && (layers[0].type == sketch.Types.Artboard || layers[0].type == sketch.Types.SymbolMaster)) {
         layers = layers[0].layers;
     }
 
@@ -399,23 +332,23 @@ function filterTypes(selection) {
         for (var i = 0; i < layers.length; i++) {
             var layer = layers[i];
             // skip layer if not visible
-            if (!layer.sketchObject.isVisible()) { continue; }
+            if (layer.hidden) { continue; }
 
             // get layer data by layer type
-            if ( layer.type == 'Group' ) {
+            if ( layer.type == sketch.Types.Group ) {
                 selectedLayerInfo.push( getGroup(layer) );
                 continue;
             }
-            if ( layer.type == 'ShapePath' || layer.type == 'Shape' ) {
+            if ( layer.type == sketch.Types.ShapePath || layer.type == sketch.Types.Shape ) {
                 selectedLayerInfo.push( getShape(layer) );
             }
-            if ( layer.type == 'SymbolInstance' ) {
+            if ( layer.type == sketch.Types.SymbolInstance ) {
                 selectedLayerInfo.push( getSymbol(layer) );
             }
-            if ( layer.type == 'Text' ) {
+            if ( layer.type == sketch.Types.Text ) {
                 selectedLayerInfo.push( getText(layer) );
             }
-            if ( layer.type == 'Image' ) {
+            if ( layer.type == sketch.Types.Image ) {
                 var imgLayer = getImage(layer);
                 if (imgLayer == null) { layerCount = -1; return selectedLayerInfo; }
                 selectedLayerInfo.push( imgLayer );
@@ -465,7 +398,7 @@ function storeArtboard() {
 
 //// get layer data: SHAPE
 function getShape(layer) {
-    var layerType = getShapeType(layer.sketchObject);
+    var layerType = getShapeType(layer);
 	var layerData =  {
         type: layerType,
         name: layer.name,
@@ -475,14 +408,15 @@ function getShape(layer) {
         stroke: getStrokes(layer),
         shadow: getShadows(layer),
         innerShadow: getInnerShadows(layer),
-        isVisible: layer.sketchObject.isVisible(),
+        isVisible: !layer.hidden,
         path: getPath(layer, layer.frame),
         roundness: getRoundness(layer),
-        blur: getBlur(layer.sketchObject),
+        blur: getBlur(layer),
         opacity: getOpacity(layer),
-        rotation: -layer.sketchObject.rotation(),
+        rotation: -layer.transform.rotation,
         flip: getFlipMultiplier(layer),
-        blendMode: getLayerBlending( layer.sketchObject.style().contextSettings().blendMode() ),
+        blendMode: getAELayerBlending(layer.style.blendingMode),
+        // FIXME: <rodionovd>
         hasClippingMask: layer.sketchObject.hasClippingMask(),
         shouldBreakMaskChain: layer.sketchObject.shouldBreakMaskChain(),
     };
@@ -514,15 +448,16 @@ function getShape(layer) {
             name: '\u25BD ' + layer.name,
             id: layer.id,
             frame: getFrame(layer),
-            isVisible: layer.sketchObject.isVisible(),
+            isVisible: !layer.hidden,
             opacity: getOpacity(layer),
             shadow: getShadows(layer),
             innerShadow: getInnerShadows(layer),
-            rotation: -layer.sketchObject.rotation(),
-            blendMode: getLayerBlending(layer.sketchObject.style().contextSettings().blendMode()),
+            rotation: -layer.transform.rotation,
+            blendMode: getAELayerBlending(layer.style.blendingMode),
             flip: getFlipMultiplier(layer),
             // layers: [],
             layers: [layerData, imageLayer],
+            // FIXME: <rodionovd>
             hasClippingMask: layer.sketchObject.hasClippingMask(),
             shouldBreakMaskChain: layer.sketchObject.shouldBreakMaskChain(),
         }
@@ -532,6 +467,7 @@ function getShape(layer) {
     /// if shape is a compound get the shapes that make up the compound
     if (layerType == 'CompoundShape') {
         layerData.layers = getCompoundShapes(layer.layers);
+        // FIXME: <rodionovd>
         layerData.booleanOperation = layer.layers[0].sketchObject.booleanOperation();
     }
 
@@ -539,16 +475,15 @@ function getShape(layer) {
 
   /// get corner roundness clamped to the shape size
     function getRoundness(layer) {
-        try {
-            var lyr = layer.sketchObject;
-            var radius = lyr.points()[0].cornerRadius();
-            var width = lyr.frame().width();
-            var height = lyr.frame().height();
-            var maxRad = Math.min(Math.min(width, height), radius);
-            return maxRad;
-        } catch (e) {
+        if (layer.type !== sketch.ShapePath) {
             return null;
         }
+
+        var radius = layer.points[0].cornerRadius;
+        var width = layer.frame.width;
+        var height = layer.frame.height;
+        var maxRad = Math.min(Math.min(width, height), radius);
+        return maxRad;
     }
 }
 
@@ -572,16 +507,17 @@ function getSymbol(layer) {
         id: layer.id,
         frame: getFrame(layer),
         style: layer.style,
-        isVisible: layer.sketchObject.isVisible(),
+        isVisible: !layer.hidden,
         opacity: getOpacity(layer),
         shadow: getShadows(layer),
         innerShadow: getInnerShadows(layer),
-        blendMode: getLayerBlending( layer.sketchObject.style().contextSettings().blendMode() ),
+        blendMode: getAELayerBlending(layer.style.blendingMode),
         layers: filterTypes(layer.master),
         symbolFrame: layer.master.frame,
-        bgColor: sketchColorToArray(layer.master.sketchObject.backgroundColor()),
-        rotation: -layer.sketchObject.rotation(),
+        bgColor: hexToArray(layer.master.background.color),
+        rotation: -layer.transform.rotation,
         flip: getFlipMultiplier(layer),
+        // FIXME: <rodionovd>
         hasClippingMask: layer.sketchObject.hasClippingMask(),
         shouldBreakMaskChain: layer.sketchObject.shouldBreakMaskChain(),
 	};
@@ -630,12 +566,17 @@ function getSymbol(layer) {
                     //// it is TEXT ////
                     if (currentLayer.id == override.path) {      // do ids match?
 						var text = override.value;
-						try {
-							var transformVal = document.getLayerWithID(override.path).sketchObject.styleAttributes()["MSAttributedStringTextTransformAttribute"];
-					        if (transformVal == 1) { text = text.toUpperCase(); }
-					        if (transformVal == 2) { text = text.toLowerCase(); }
-						} catch (e) {}
-
+                        const layer = document.getLayerWithID(override.path);
+                        if (layer?.type == sketch.Types.Text) {
+                            switch (layer.style.textTransform) {
+                            case 'uppercase':
+                                text = text.toUpperCase();
+                            case 'lowercase':
+                                text = text.toLowerCase();
+                            default:
+                                break;
+                            }
+                        }
                         currentLayer[ override.property ] = text;  // replace the text/image value
                     }
                 }
@@ -653,13 +594,14 @@ function getGroup(layer) {
         name: '\u25BD ' + layer.name,
         id: layer.id,
         frame: getFrame(layer),
-        isVisible: layer.sketchObject.isVisible(),
+        isVisible: !layer.hidden,
         opacity: getOpacity(layer),
         shadow: getShadows(layer),
         innerShadow: getInnerShadows(layer),
-        rotation: -layer.sketchObject.rotation() * (flip[0]/100) * (flip[1]/100),
-        blendMode: layer.sketchObject.style().contextSettings().blendMode(),
+        rotation: -layer.transform.rotation * (flip[0]/100) * (flip[1]/100),
+        blendMode: layer.style.blendingMode,
         flip: flip,
+        // FIXME: <rodionovd>
         hasClippingMask: layer.sketchObject.hasClippingMask(),
         shouldBreakMaskChain: layer.sketchObject.shouldBreakMaskChain(),
         layers: filterTypes(layer),
@@ -681,10 +623,11 @@ function getText(layer) {
     var flip = getFlipMultiplier(layer);
 
     /// point or area text box
-    if (layer.sketchObject.textBehaviour() == 0) {
+    if (!layer.fixedWidth) {
         kind = 'Point';
         frame = {
             x: layer.frame.x,
+            // FIXME: <rodionovd> expose MSTextLayer.glyphBounds() in JS API?
             y: layer.frame.y + layer.sketchObject.glyphBounds().origin.y,
             width: layer.frame.width,
             height: layer.frame.height
@@ -693,11 +636,21 @@ function getText(layer) {
         kind = 'Area';
         frame = {
             x: layer.frame.x + layer.frame.width / 2,
+            // FIXME: <rodionovd> expose MSTextLayer.glyphBounds() in JS API?
             y: layer.frame.y + layer.frame.height / 2 + layer.sketchObject.glyphBounds().origin.y,
             width: layer.frame.width,
             height: layer.frame.height
         }
     }
+
+    const TextAlignmentMap = {
+        left: 0, // Visually left aligned
+        right: 1, // Visually right aligned
+        center: 2, // Visually centered
+        justified: 3, // Fully-justified. The last line in a paragraph is natural-aligned.
+        natural: 4, // Indicates the default alignment for script
+    };  
+
 	var layerData =  {
         type: 'Text',
         kind: kind,
@@ -705,46 +658,41 @@ function getText(layer) {
         stringValue: getTextString(layer),
 		id: layer.id,
 		frame: frame,
-        isVisible: layer.sketchObject.isVisible(),
+        isVisible: !layer.hidden,
 		opacity: getOpacity(layer),
 		shadow: getShadows(layer),
 		innerShadow: getInnerShadows(layer),
-        textColor: sketchColorToArray(layer.sketchObject.textColor()),
+        textColor: hexToArray(layer.style.textColor),
         fill: getFills(layer),
         stroke: getStrokes(layer),
-		blendMode: getLayerBlending( layer.sketchObject.style().contextSettings().blendMode() ),
-        fontName: getFontName(),
-        fontSize: layer.sketchObject.fontSize(),
-        trackingAdjusted: layer.sketchObject.kerning() / layer.sketchObject.fontSize() * 1000,
-        tracking: layer.sketchObject.kerning(),
-        justification: layer.sketchObject.textAlignment(),
-        lineHeight: layer.sketchObject.paragraphStyle().minimumLineHeight() || null,
+		blendMode: getAELayerBlending(layer.style.blendingMode),
+        fontName: layer.style.fontFamily,
+        fontSize: layer.style.fontSize,
+        trackingAdjusted: (layer.style.kerning ?? 0) / layer.style.fontSize * 1000,
+        tracking: (layer.style.kerning ?? 0),
+        justification: TextAlignmentMap[layer.style.alignment],
+        lineHeight: layer.style.lineHeight || null,
         flip: flip,
-        rotation: -layer.sketchObject.rotation() * (flip[0]/100) * (flip[1]/100),
-        blur: getBlur(layer.sketchObject),
-        hasClippingMask: layer.sketchObject.hasClippingMask(),
+        rotation: -layer.transform.rotation * (flip[0]/100) * (flip[1]/100),
+        blur: getBlur(layer),
+        // FIXME: <rodionovd>
+        hasClippingMrask: layer.sketchObject.hasClippingMask(),
         shouldBreakMaskChain: layer.sketchObject.shouldBreakMaskChain(),
     };
 
 
     return layerData;
 
-
-
-    function getFontName() {
-        var fontName = layer.sketchObject.font().fontName() + '0';
-        return fontName.slice(0, -1);
-    }
-
     function getTextString(layer) {
         var text = layer.text.replace(/[\u2028]/g, '\n');
-        var transformVal = 0;
-        var transformVal = layer.sketchObject.styleAttributes()["MSAttributedStringTextTransformAttribute"];
-
-        if (transformVal == 1) { text = text.toUpperCase(); }
-        if (transformVal == 2) { text = text.toLowerCase(); }
-
-        return text;
+        switch (layer.style.textTransform) {
+        case 'none':
+            return text;
+        case 'uppercase':
+            return text.toUpperCase();
+        case 'lowercase':
+            return text.toLowerCase();
+        }
     }
 }
 
@@ -760,13 +708,15 @@ function getImage(layer, filldata) {
             frame: getFrame(layer),
             isVisible: !layer.hidden,
             opacity: getOpacity(layer),
-            blendMode: getLayerBlending(layer.style.blendMode),
+            blendMode: getAELayerBlending(layer.style.blendingMode),
             rotation: -layer.transform.rotation,
+            // FIXME: <rodionovd> These Mask-related properties should be available via JS API
             hasClippingMask: layer.sketchObject.hasClippingMask(),
             shouldBreakMaskChain: layer.sketchObject.shouldBreakMaskChain(),
         }
         var imgData = ''
         
+        // FIXME: <rodionovd> Sketch.ImageData should offer a `base64` property
         if (layer.image) {
             imgData = layer.image.nsdata.base64EncodedStringWithOptions(0).toString()
         } else {
@@ -793,7 +743,7 @@ function getCompoundShapes(layers) {
     /// loop through all nested shapes
     for (var i = 0; i < layers.length; i++) {
         var layer = layers[i];
-        var layerType = getCompoundShapeType(layer.sketchObject);
+        var layerType = getCompoundShapeType(layer);
 
         // var layerId = (layer.objectID()+ '&').slice(0, -1);
         var flip = getFlipMultiplier(layer);
@@ -810,9 +760,10 @@ function getCompoundShapes(layers) {
     		frame: frame,
             isVisible: !layer.hidden,
             path: getPath(layer, frame),
-            roundness: getCompoundRoundness(layer.sketchObject),
+            roundness: getCompoundRoundness(layer),
             flip: flip,
-            rotation: -layer.sketchObject.rotation() * (flip[0]/100) * (flip[1]/100),
+            rotation: -layer.transform.rotation * (flip[0]/100) * (flip[1]/100),
+            // FIXME: <rodionovd> this should be available via JS API
             booleanOperation: layer.sketchObject.booleanOperation(),
         });
 
@@ -825,51 +776,52 @@ function getCompoundShapes(layers) {
 
 
     /// check the shape type
-    function getCompoundShapeType(lyr) {
-        if ( lyr.class() == 'MSRectangleShape' && !lyr.edited() ) { return 'Rect' }
-        if ( lyr.class() == 'MSOvalShape' && !lyr.edited() ) { return 'Ellipse' }
-        if ( lyr.class() == 'MSShapeGroup' && lyr.layers().length > 1 ) {
-            // alert(JSON.stringify(getCompoundShapes(lyr.layers()), false, 2))
-            // layerList[i].layers = getCompoundShapes(layer.layers);
-            return 'CompoundShape'
+    function getCompoundShapeType(layer) {
+        if (layer.type == sketch.Types.Shape) {
+            return 'CompoundShape';
         }
+        if (layer.type == sketch.Types.ShapePath) {
+            switch (layer.shapeType) {
+            case sketch.ShapePath.ShapeType.Rectangle:
+                return 'Rect';
+            case sketch.ShapePath.ShapeType.Oval:
+                return 'Ellipse';
+            default:
+                return 'Path';
+            }
+        } 
         return 'Path';
     }
 
     /// get corner roundness clamped to the shape size
     function getCompoundRoundness(layer) {
-        try {
-            var radius = layer.fixedRadius();
-            var width = layer.frame().width();
-            var height = layer.frame().height();
-            var maxRad = Math.min(Math.min(width, height), radius);
+        // TODO: <rodionovd> figure what this function actually does and whether it can be done via JS API
+        return null;
+        // try {
+        //     var radius = layer.fixedRadius();
+        //     var width = layer.frame().width();
+        //     var height = layer.frame().height();
+        //     var maxRad = Math.min(Math.min(width, height), radius);
 
-            return maxRad/2;
-        } catch (e) {
-            return null;
-        }
+        //     return maxRad/2;
+        // } catch (e) {
+        //     return null;
+        // }
     }
 }
 
 
 //// get shape data: PATH
 function getPath(layer, frame) {
-    // var lyr = layer.sketchObject.layers().firstObject();     // 51
-    var lyr = layer.sketchObject;
-    // skip if no path on the current object (like a compound path )
-    if (!lyr.points) {
-        return {
-    		points: [],
-    		inTangents: [],
-    		outTangents: [],
-    		closed: false
-    	}
-    }
     /// reset vars
     var points = [], inTangents = [], outTangents = [];
 
     /// get the path object
-	var path = lyr.points();
+	const path = layer.points ?? [];
+    // skip if no path on the current object (like a compound path )
+    if (path.length == 0) {
+        return { points: [], inTangents: [], outTangents: [], closed: false };
+    }
 
     /// get the height and width to multiply point point coordinates
 	var shapeSize = {
@@ -880,18 +832,18 @@ function getPath(layer, frame) {
     /// loop through each point on the path
 	for (var k = 0; k < path.length; k++) {
         // paths are normalized to 0-1 and scaled by a height and width multiplier
-		var p = [	round100(path[k].point().x * shapeSize.w),
-					round100(path[k].point().y * shapeSize.h) ];
+		var p = [	round100(path[k].point.x * shapeSize.w),
+					round100(path[k].point.y * shapeSize.h) ];
 
         // if the current point has curves and needs tangent handles
-		if (path[k].curveMode() !== 1) {
+		if (path[k].pointType !== sketch.ShapePath.PointType.Straight) {
             // tangent out of the point offset by the point coordinates onscreen
-			var o = [round100(path[k].curveFrom().x * shapeSize.w - p[0]),
-					 round100(path[k].curveFrom().y * shapeSize.h - p[1])];
+			var o = [round100(path[k].curveFrom.x * shapeSize.w - p[0]),
+					 round100(path[k].curveFrom.y * shapeSize.h - p[1])];
 
             // tangent into the point offset by the point coordinates onscreen
-			var i = [round100(path[k].curveTo().x * shapeSize.w - p[0]),
-					 round100(path[k].curveTo().y * shapeSize.h - p[1])];
+			var i = [round100(path[k].curveTo.x * shapeSize.w - p[0]),
+					 round100(path[k].curveTo.y * shapeSize.h - p[1])];
 
         // current point has no curves so tangets are at the same coordinate as the point
 		} else {
@@ -910,7 +862,7 @@ function getPath(layer, frame) {
 		points: points,
 		inTangents: inTangents,
 		outTangents: outTangents,
-		closed: (lyr.isClosed() == 1)
+		closed: layer.closed
 	}
 	return pathObj;
 }
@@ -922,28 +874,28 @@ function getOpacity(layer) {
 
 
 //// get layer data: SHAPE TYPE
-function getShapeType(lyr) {
-    if ( lyr.class() == 'MSShapeGroup' && lyr.layers().length > 1 ) { return 'CompoundShape' }
-    if ( lyr.class() == 'MSRectangleShape' && !lyr.edited() ) { return 'Rect' }
-    if ( lyr.class() == 'MSOvalShape' && !lyr.edited() ) { return 'Ellipse' }
-    try {
-        if ( lyr.layers().firstObject().class() == 'MSRectangleShape' && !lyr.layers()[0].edited() ) { return 'Rect' }
-        if ( lyr.layers().firstObject().class() == 'MSOvalShape' && !lyr.layers()[0].edited() ) { return 'Ellipse' }
-    } catch (e) {}
+function getShapeType(layer) {
+    if (layer.type == sketch.Types.Shape) {
+        return 'CompoundShape';
+    }
+    if (layer.type == sketch.Types.ShapePath) {
+        switch (layer.shapeType) {
+        case sketch.ShapePath.ShapeType.Rectangle:
+            return 'Rect';
+        case sketch.ShapePath.ShapeType.Oval:
+            return 'Ellipse';
+        default:
+            return 'Path';
+        }
+    } 
     return 'Path';
 }
 
 
 //// get layer data: FLIP
 function getFlipMultiplier(layer) {
-    try {
-        var x = ( layer.sketchObject.isFlippedHorizontal() ) ? -100 : 100;
-        var y = ( layer.sketchObject.isFlippedVertical() ) ? -100 : 100;
-    } catch (e) {
-        var x = ( layer.isFlippedHorizontal() ) ? -100 : 100;
-        var y = ( layer.isFlippedVertical() ) ? -100 : 100;
-    }
-
+    const x = layer.transform.flippedHorizontally ? -100 : 100;
+    const y = layer.transform.flippedVertically ? -100 : 100;
     return [x, y];
 }
 
@@ -951,7 +903,6 @@ function getFlipMultiplier(layer) {
 //// get layer data: FILL
 function getFills(layer) {
     /// get layer style object
-    // var style = layer.sketchObject.style();
     var style = layer.style;
 
     /// check if the layer has at least one fill
@@ -964,6 +915,8 @@ function getFills(layer) {
         // loop through all fills
         for (var i = 0; i < style.fills.length; i++) {
             var fill = style.fills[i];
+            // FIXME: <rodionovd> Per-style-component blending mode should be exposed via JS API
+            const nativeFillBlendingMode = layer.sketchObject.style().fills()[i].contextSettings().blendMode();
 
             // add fill to fillProps only if fill is enabled
             if (fill.enabled) {
@@ -980,7 +933,8 @@ function getFills(layer) {
                         gradType: (fill.gradient.gradientType == 'Radial') ? 2 : 1,
                         gradient: getGradient(fill.gradient.stops),
                         opacity: Math.round(color[3] * 100),
-                        blendMode: getShapeBlending(layer.sketchObject.style().fills()[i].contextSettings().blendMode() ),
+                        blendMode: getAEShapeBlending(nativeFillBlendingMode),
+
     				}
                 // fill is an image or texture
                 } else if (fill.fillType == 'Pattern') {
@@ -995,7 +949,7 @@ function getFills(layer) {
     					enabled: fill.enabled,
     					color: color,
     					opacity: Math.round(color[3] * 100),
-    					blendMode: getShapeBlending(layer.sketchObject.style().fills()[i].contextSettings().blendMode() ),
+    					blendMode: getAEShapeBlending(nativeFillBlendingMode),
     				}
                 }
                 // UI.alert('gradient', JSON.stringify(fillObj, false, 2))
@@ -1013,66 +967,72 @@ function getFills(layer) {
 //// get layer data: STROKE
 function getStrokes(layer) {
     /// get layer style object
-    var style = layer.sketchObject.style();
-    var styleJs = layer.style;
+    const style = layer.style;
 
     /// check if the layer has at least one stroke
-    var hasStroke = ( styleJs.borders.length > 0 ) ? true : false;
+    // FIXME: <rodionovd> This should prob check for the presence of at least one *enabled* border
+    const hasStroke = ( style.borders.length > 0 ) ? true : false;
 
-	if (hasStroke) {
-		var strokeData = [];
-        var size = [layer.frame.width, layer.frame.height];
+	if (!hasStroke) {
+        return null;
+    }
+    const size = [layer.frame.width, layer.frame.height];
+    const strokeData = style.borders.reduce((prev, border) => {
+        if (!border.enabled) {
+            return prev;
+        }
 
-        // loop through all strokes
-        for (var i = 0; i < style.borders().length; i++) {
-            var border = style.borders()[i];
-            var borderJs = styleJs.borders[i];
-            if (borderJs.enabled) {
-                var color = hexToArray(borderJs.color);
-                // stroke is a gradient
-                if (border.fillType() == 1) {
-                    var strokeObj = {
-                        type: 'gradient',
-                        startPoint: [borderJs.gradient.from.x * size[0] - layer.frame.width / 2,
-                                     borderJs.gradient.from.y * size[1] - layer.frame.height / 2],
-                        endPoint:   [borderJs.gradient.to.x * size[0] - layer.frame.width / 2,
-                                     borderJs.gradient.to.y * size[1] - layer.frame.height / 2],
-                        gradType: (borderJs.gradient.gradientType == 'Radial') ? 2 : 1,
-                        gradient: getGradient(borderJs.gradient.stops),
-        				opacity: color[3] * 100,
-        				width: borderJs.thickness,
-        				cap: style.borderOptions().lineCapStyle(),
-        				join: style.borderOptions().lineJoinStyle(),
-        				strokeDashes: style.borderOptions().dashPattern(),
-                        blendMode: getShapeBlending( border.contextSettings().blendMode() ),
-        			}
-                // stroke is a solid
-                } else {
-                    var strokeObj = {
-                        type: 'fill',
-                        enabled: borderJs.enabled,
-        				color: color,
-        				opacity: color[3] * 100,
-        				width: borderJs.thickness,
-        				cap: style.borderOptions().lineCapStyle(),
-        				join: style.borderOptions().lineJoinStyle(),
-                        strokeDashes: getDashes( style.borderOptions() ),
-                        blendMode: getShapeBlending( border.contextSettings().blendMode() ),
-        			}
-                }
+        const lineCapStyleFromLineEnd = (lineEnd) => {
+            const LineEndMap = { Butt: 0, Round: 1, Projecting: 2, };
+            return LineEndMap[lineEnd] || 0;
+        };
+        const lineJoiStyleFromLineJoin = (lineJoin) => {
+            const LineJoinMap = { Miter: 0, Round: 1, Bevel: 2, }
+            return LineJoinMap[lineJoin] || 0;
+        };
 
-            // add obj string to array
-			strokeData.push(strokeObj);
-		}
-	}
-		return strokeData;															// return array of all strokes
-	} else {
-		return null;																			// no fills so return null
-	}
+        const color = hexToArray(border.color);
+        switch (border.fillType) {
+        case sketch.Style.FillType.Gradient:
+            return prev.concat({
+                type: 'gradient',
+                startPoint: [border.gradient.from.x * size[0] - layer.frame.width / 2,
+                                border.gradient.from.y * size[1] - layer.frame.height / 2],
+                endPoint:   [border.gradient.to.x * size[0] - layer.frame.width / 2,
+                                border.gradient.to.y * size[1] - layer.frame.height / 2],
+                gradType: (border.gradient.gradientType == Style.GradientType.Radial) ? 2 : 1,
+                gradient: getGradient(border.gradient.stops),
+                opacity: color[3] * 100,
+                width: border.thickness,
+                cap: lineCapStyleFromLineEnd(style.borderOptions.lineEnd),
+                join: lineJoiStyleFromLineJoin(style.borderOptions.lineJoin),
+                strokeDashes: style.borderOptions.dashPattern,
+                // FIXME: <rodionovd> this should be available via JS API
+                blendMode: getAEShapeBlending(border.sketchObject.contextSettings().blendMode()),
+            });
+        case sketch.Style.FillType.Color:
+        // FIXME: <rodionovd> this follows the original implementation but we should probably
+        // handle Patterns separately from solid colors?
+        case sketch.Style.FillType.Pattern:
+            return prev.concat({
+                type: 'fill',
+                enabled: border.enabled,
+                color: color,
+                opacity: color[3] * 100,
+                width: border.thickness,
+                cap: lineCapStyleFromLineEnd(style.borderOptions.lineEnd),
+                join: lineJoiStyleFromLineJoin(style.borderOptions.lineJoin),
+                strokeDashes: style.borderOptions.dashPattern,
+                // FIXME: <rodionovd> this should be available via JS API
+                blendMode: getAEShapeBlending(border.sketchObject.contextSettings().blendMode()),
+            });
+        }
+    }, []);
 }
 
 
 //// get layer data: STROKE DASHES
+// FIXME: <rodionovd> remove this?
 function getDashes(borderOptions) {
     var dashPattern = borderOptions.dashPattern();
     var dashArray = [];
@@ -1108,67 +1068,67 @@ function getGradient(grad) {
 
 //// get layer data: DROP SHADOW
 function getShadows(layer) {
-    var style = layer.sketchObject.style();
-	var hasShadow = ( style.firstEnabledShadow() ) ? true : false;
+	const hasShadow = layer.style.shadows.reduce((hasOneActiveShadow, shadow) => {
+        return hasOneActiveShadow || shadow.enabled;
+    }, false);
 
 	if (hasShadow) {
-		var shadowData = [];																	// array to store shadow(s)
-		for (var i = 0; i < style.shadows().length; i++) {								// loop through all shadows
-            var shadow = style.shadows()[i];
-            if (shadow.isEnabled()) {											// add shadow to shadowProps only if shadow is enabled
-				var shadowObj = {																// 1 object per shadow obj
-    				color: sketchColorToArray(shadow.color()),		// store color obj as array
-    				position: [shadow.offsetX(), shadow.offsetY()],
-    				blur: shadow.blurRadius(),
-    				spread: shadow.spread()
-    			}
-			shadowData.push(shadowObj);														// add obj string to array
-    		}
-    	}
-		return shadowData;															// return array of all shadows
-	} else {
-		return null;																			// no shadows so return null
+		const shadowData = layer.style.shadows.reduce((prev, shadow) => {
+            if (!shadow.enabled) {
+                return prev;
+            }
+            return prev.concat({
+                color: hexToArray(shadow.color),
+                position: [shadow.x, shadow.y],
+                blur: shadow.blur,
+                spread: shadow.spread
+            });
+        }, []);
+        return shadowData
 	}
+
+    return null;
 }
 
 
 //// get layer data: INNER SHADOW
 function getInnerShadows(layer) {
-    var style = layer.sketchObject.style();
-    var hasShadow = (style.innerShadows().length > 0 && style.innerShadows()[0].isEnabled()) ? true : false;	// check if the layer has at least one drop shadow
+	const hasInnerShadow = layer.style.innerShadows.reduce((hasOneActiveInnerShadow, shadow) => {
+        return hasOneActiveInnerShadow || shadow.enabled;
+    }, false);
 
-	if (hasShadow) {
-		var shadowData = [];																// array to store shadow(s)
-		for (var i = 0; i < style.innerShadows().length; i++) {						// loop through all shadows
-            var innerShadow = style.innerShadows()[i];
-            var shadowObj = {																// 1 object per shadow obj
-    			color: sketchColorToArray(innerShadow.color()),	// store color obj as array
-    			position: [innerShadow.offsetX(), innerShadow.offsetY()],
-    			blur: innerShadow.blurRadius(),
-    			spread: innerShadow.spread()
-    		}
-		    shadowData.push(shadowObj);														// add obj string to array
-	    }
-		return shadowData;														// return array of all shadows
-	} else {
-		return null;																		// no shadows so return null
+	if (hasInnerShadow) {
+		const shadowData = layer.style.innerShadows.reduce((prev, shadow) => {
+            if (!shadow.enabled) {
+                return prev;
+            }
+            return prev.concat({
+                color: hexToArray(shadow.color),
+                position: [shadow.x, shadow.y],
+                blur: shadow.blur,
+                spread: shadow.spread
+            });
+        }, []);
+        return shadowData
 	}
+
+    return null;
 }
 
 
 //// get layer data: BLUR
 function getBlur(layer) {
-    var blur = layer.style().blur();
-    if (!blur.isEnabled()) { return null }
-
-    var blurObj = {
-        // center: blur.center(),
-        direction: (90 - blur.motionAngle()) % 360,
-        radius: blur.radius() * 4,
-        type: blur.type(),
+    const blur = layer.style.blur;
+    if (!blur || !blur.enabled) {
+        return null;
     }
 
-    return [blurObj];
+    const BlurTypeMap = { Gaussian: 0, Motion: 1, Zoom: 2, Background: 3 }
+    return [{
+        direction: (90 - blur.motionAngle) % 360,
+        radius: blur.radius * 4,
+        type: BlurTypeMap[blur.type],
+    }];
 }
 //// DEPRECIATED copy text to clipboard
 // function copy_text(txt){
@@ -1263,131 +1223,80 @@ function round100(num) {
 
 
 //// return enumerated layer blending mode
-function getLayerBlending(mode) {
-    var aeBlendMode;
-
-    switch (mode) {
-        case 1:
-            aeBlendMode = 'BlendingMode.DARKEN';
-            break;
-        case 2:
-            aeBlendMode = 'BlendingMode.MULTIPLY';
-            break;
-        case 3:
-            aeBlendMode = 'BlendingMode.COLOR_BURN';
-            break;
-        case 4:
-            aeBlendMode = 'BlendingMode.LIGHTEN';
-            break;
-        case 5:
-            aeBlendMode = 'BlendingMode.SCREEN';
-            break;
-        case 6:
-            aeBlendMode = 'BlendingMode.ADD';
-            break;
-        case 7:
-            aeBlendMode = 'BlendingMode.OVERLAY';
-            break;
-        case 8:
-            aeBlendMode = 'BlendingMode.SOFT_LIGHT';
-            break;
-        case 9:
-            aeBlendMode = 'BlendingMode.HARD_LIGHT';
-            break;
-        case 10:
-            aeBlendMode = 'BlendingMode.DIFFERENCE';
-            break;
-        case 11:
-            aeBlendMode = 'BlendingMode.EXCLUSION';
-            break;
-        case 12:
-            aeBlendMode = 'BlendingMode.HUE';
-            break;
-        case 13:
-            aeBlendMode = 'BlendingMode.SATURATION';
-            break;
-        case 14:
-            aeBlendMode = 'BlendingMode.COLOR';
-            break;
-        case 15:
-            aeBlendMode = 'BlendingMode.LUMINOSITY';
-            break;
-        default: aeBlendMode = 'BlendingMode.NORMAL';
+function getAELayerBlending(jsBlendingMode) {
+    switch (jsBlendingMode) {
+    case sketch.Style.BlendingMode.Darken:
+        return 'BlendingMode.DARKEN';
+    case sketch.Style.BlendingMode.Multiply:
+        return 'BlendingMode.MULTIPLY';
+    case sketch.Style.BlendingMode.ColorBurn:
+        return 'BlendingMode.COLOR_BURN';
+    case sketch.Style.BlendingMode.Lighten:
+        return 'BlendingMode.LIGHTEN';
+    case sketch.Style.BlendingMode.Screen:
+        return 'BlendingMode.SCREEN';
+    case sketch.Style.BlendingMode.ColorDodge:
+        return 'BlendingMode.ADD';
+    case sketch.Style.BlendingMode.Overlay:
+        return 'BlendingMode.OVERLAY';
+    case sketch.Style.BlendingMode.SoftLight:
+        return 'BlendingMode.SOFT_LIGHT';
+    case sketch.Style.BlendingMode.HardLight:
+        return 'BlendingMode.HARD_LIGHT';
+    case sketch.Style.BlendingMode.Difference:
+        return 'BlendingMode.DIFFERENCE';
+    case sketch.Style.BlendingMode.Exclusion:
+        return 'BlendingMode.EXCLUSION';
+    case sketch.Style.BlendingMode.Hue:
+        return 'BlendingMode.HUE';
+    case sketch.Style.BlendingMode.Saturation:
+        return 'BlendingMode.SATURATION';
+    case sketch.Style.BlendingMode.Color:
+        return 'BlendingMode.COLOR';
+    case sketch.Style.BlendingMode.Luminosity:
+        return 'BlendingMode.LUMINOSITY'; 
+    default:
+        return 'BlendingMode.NORMAL';
     }
-    return aeBlendMode;
 }
 
 //// return integer layer blending mode
-function getShapeBlending(mode) {
-    var aeBlendMode;
-
-    switch (mode) {
-        case 1:
-            aeBlendMode = 3;
-            break;
-        case 2:
-            aeBlendMode = 4;
-            break;
-        case 3:
-            aeBlendMode = 5;
-            break;
-        case 4:
-            aeBlendMode = 9;
-            break;
-        case 5:
-            aeBlendMode = 10;
-            break;
-        case 6:
-            aeBlendMode = 11;
-            break;
-        case 7:
-            aeBlendMode = 15;
-            break;
-        case 8:
-            aeBlendMode = 16;
-            break;
-        case 9:
-            aeBlendMode = 17;
-            break;
-        case 10:
-            aeBlendMode = 23;
-            break;
-        case 11:
-            aeBlendMode = 24;
-            break;
-        case 12:
-            aeBlendMode = 26;
-            break;
-        case 13:
-            aeBlendMode = 27;
-            break;
-        case 14:
-            aeBlendMode = 28;
-            break;
-        case 15:
-            aeBlendMode = 29;
-            break;
-        default: aeBlendMode = 1;
+function getAEShapeBlending(nativeBlendingMode) {
+    switch (nativeBlendingMode) {
+    case sketch.Style.BlendingMode.Darken:
+        return 3;
+    case sketch.Style.BlendingMode.Multiply:
+        return 4;
+    case sketch.Style.BlendingMode.ColorBurn:
+        return 5;
+    case sketch.Style.BlendingMode.Lighten:
+        return 9;
+    case sketch.Style.BlendingMode.Screen:
+        return 10;
+    case sketch.Style.BlendingMode.ColorDodge:
+        return 11;
+    case sketch.Style.BlendingMode.Overlay:
+        return 15;
+    case sketch.Style.BlendingMode.SoftLight:
+        return 16;
+    case sketch.Style.BlendingMode.HardLight:
+        return 17;
+    case sketch.Style.BlendingMode.Difference:
+        return 23;
+    case sketch.Style.BlendingMode.Exclusion:
+        return 24;
+    case sketch.Style.BlendingMode.Hue:
+        return 26;
+    case sketch.Style.BlendingMode.Saturation:
+        return 27;
+    case sketch.Style.BlendingMode.Color:
+        return 28;
+    case sketch.Style.BlendingMode.Luminosity:
+        return 29; 
+    default:
+        return 1;
     }
-
-    return aeBlendMode;
 }
-
-
-//// convert color obj to array
-function sketchColorToArray(c) {
-    var colorString = c.toString()
-                       .replace('r:', '')
-                       .replace('g:', '')
-                       .replace('b:', '')
-                       .replace('a:', '')
-                       .replace(/\s/g, ', ')
-                       .replace('(', '[')
-                       .replace(')', ']');
-
-	return JSON.parse(colorString);
-}
-
 
 
 //// convert hex color to array
