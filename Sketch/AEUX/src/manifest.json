@@ -12,10 +12,10 @@
     {
       "name": "Open panel",
       "identifier": "com.wearesumux.AEUX.panel",
-      "script": "./plugin.js",
+      "script": "./aeux.js",
       "handlers": {
         "actions": {
-          "run": "onRun",
+          "run": "openPanel",
           "Shutdown": "onShutdown"
         }
       },
@@ -24,20 +24,20 @@
     {
       "name": "Send selection to Ae",
       "identifier": "com.wearesumux.AEUX.push",
-      "script": "./plugin.js",
-      "handler": "fetchAEUX"
+      "script": "./aeux.js",
+      "handler": "exportToAEUX"
     },
     {
       "name": "Detach selected symbols",
       "identifier": "com.wearesumux.AEUX.detach",
-      "script": "./plugin.js",
-      "handler": "detachSymbols"
+      "script": "./aeux.js",
+      "handler": "detachSelection"
     },
     {
       "name": "Flatten selected shapes",
       "identifier": "com.wearesumux.AEUX.flatten",
-      "script": "./plugin.js",
-      "handler": "flattenCompounds"
+      "script": "./aeux.js",
+      "handler": "flattenSelection"
     }
   ],
   "menu": {

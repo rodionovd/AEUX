@@ -26,16 +26,17 @@
     "@skpm/extract-loader": "^2.0.3",
     "@typescript-eslint/eslint-plugin": "^2.14.0",
     "@typescript-eslint/parser": "^2.14.0",
-    "webpack": "^5.99.9",
     "css-loader": "^3.2.0",
     "eslint": "^6.8.0",
     "eslint-plugin-vue": "^6.1.2",
-    "html-loader": "^0.5.5"
+    "html-loader": "^0.5.5",
+    "webpack": "^5.99.9"
   },
   "resources": [
     "resources/**/*.js"
   ],
   "dependencies": {
+    "@babel/runtime": "^7.27.6",
     "sketch-module-web-view": "^3.1.4",
     "skpm": "^1.3.1",
     "vue": "^2.6.10"
