@@ -257,8 +257,11 @@ function serializeLayers(_layers, imageCollector) {
     if (layer.hidden) {
       return [];
     }
-
-    const blurs = layer.style.blurs.flatMap((blur) => {
+    const AELayerGetBlurs = (layer) => {
+      // FIXME: a shim to support both Sketch 2025.1 and 101
+      return layer.style.blurs ?? [layer.style.blur];
+    };
+    const blurs = AELayerGetBlurs(layer).flatMap((blur) => {
       return AEConvertBlur(blur) || [];
     });
     const innerShadows = layer.style.innerShadows.flatMap((shadow) => {
