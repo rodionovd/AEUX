@@ -268,7 +268,7 @@ function serializeLayers(_layers, imageCollector) {
       return AEConvertShadow(shadow) || [];
     });
     const fills = layer.style.fills.flatMap((fill) => {
-      return AEConvertFill(fill, layer.frame) || [];
+      return AEConvertFill(fill, layer) || [];
     });
     const shadows = layer.style.shadows.flatMap((shadow) => {
       return AEConvertShadow(shadow) || [];
@@ -506,7 +506,7 @@ function serializeLayers(_layers, imageCollector) {
       case sketch.Types.Image:
         imageCollector.images.push({
           name: `${layer.name}_${layer.id}.png`,
-          imgData: AEImageDataGetBase64String(layer.image).replace(/<|>/g, ""),
+          imgData: AELayerExportPNGAsBase64String(layer).replace(/<|>/g, ""),
         });
         return {
           type: "Image",
@@ -528,12 +528,12 @@ function serializeLayers(_layers, imageCollector) {
 
 // MARK: - Lil helpers
 
-function AEImageDataGetBase64String(imageData) {
-  if (!imageData) {
+function AELayerExportPNGAsBase64String(layer) {
+  if (!layer) {
     return null;
   }
-  // FIXME <rodionovd> not exposed in JS API
-  return String(imageData.nsdata.base64EncodedStringWithOptions(0).toString());
+  const buffer = sketch.export(layer, { formats: "png", output: false });
+  return buffer.toString("base64");
 }
 
 function AETextGetAlignment(textLayer) {
@@ -805,7 +805,7 @@ function AEConvertGradient(gradient, hostingLayerFrame) {
   };
 }
 
-function AEConvertFill(fill, hostingLayerFrame) {
+function AEConvertFill(fill, hostingLayer) {
   if (!fill.enabled) {
     return null;
   }
@@ -813,11 +813,11 @@ function AEConvertFill(fill, hostingLayerFrame) {
   switch (fill.fillType) {
     case sketch.Style.FillType.Gradient:
       return {
-        ...AEConvertGradient(fill.gradient, hostingLayerFrame),
+        ...AEConvertGradient(fill.gradient, hostingLayer.frame),
         blendMode: AEStyleFillGetBlendingModeCode(fill),
       };
     case sketch.Style.FillType.Pattern:
-      const base64ImageData = AEImageDataGetBase64String(fill.pattern.image);
+      const base64ImageData = AELayerExportPNGAsBase64String(hostingLayer);
       return {
         type: "Image",
         imgData: base64ImageData,
