@@ -282,7 +282,7 @@ function serializeLayers(_layers, imageCollector) {
     switch (layer.type) {
       case sketch.Types.Group:
         const interpretAsComponent =
-          layer.layers > 1 && AELayerIsMasked(layer.layers[0]);
+          layer.layers.length > 1 && AELayerIsMasked(layer.layers[0]);
         return {
           type: interpretAsComponent ? "Component" : "Group",
           name: "\u25BD " + layer.name,
