@@ -428,12 +428,15 @@ function serializeLayers(_layers, imageCollector) {
         })();
 
         return {
-          type: "Symbol",
+          type: "Group",
           name: layer.master.name,
           masterId: layer.master.id,
           id: layer.id,
           frame: AELayerGetFrame(layer),
-          style: layer.style,
+          fill: fills.length > 0 ? fills : null,
+          shadow: shadows.length > 0 ? shadows : null,
+          innerShadow: innerShadows.length > 0 ? innerShadows : null,
+          stroke: borders.length > 0 ? borders : null,
           isVisible: !layer.hidden,
           opacity: AEConvertOpacity(layer.style.opacity),
           shadow: shadows.length > 0 ? shadows : null,
