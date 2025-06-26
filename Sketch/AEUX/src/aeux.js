@@ -3,6 +3,7 @@ import { getWebview } from "sketch-module-web-view/remote";
 const sketch = require("sketch");
 const UI = require("sketch/ui");
 const Settings = require("sketch/settings");
+const { Buffer } = require("buffer");
 
 export function getPluginBrowserWindow(options = { createIfNeeded: true }) {
   const identifier = "aeux.webview";
@@ -509,7 +510,10 @@ function serializeLayers(_layers, imageCollector) {
       case sketch.Types.Image:
         imageCollector.images.push({
           name: `${layer.name}_${layer.id}.png`,
-          imgData: AELayerExportPNGAsBase64String(layer).replace(/<|>/g, ""),
+          imgData: NSImageToPNGAsBase64String(layer.image.nsimage).replace(
+            /<|>/g,
+            ""
+          ),
         });
         return {
           type: "Image",
@@ -531,12 +535,14 @@ function serializeLayers(_layers, imageCollector) {
 
 // MARK: - Lil helpers
 
-function AELayerExportPNGAsBase64String(layer) {
-  if (!layer) {
-    return null;
-  }
-  const buffer = sketch.export(layer, { formats: "png", output: false });
-  return buffer.toString("base64");
+function NSImageToPNGAsBase64String(nsimage) {
+  let tiffData = nsimage.TIFFRepresentation();
+  let bitmap = NSBitmapImageRep.imageRepWithData(tiffData);
+  let pngData = bitmap.representationUsingType_properties(
+    NSBitmapImageFileTypePNG,
+    {}
+  );
+  return Buffer.from(pngData).toString("base64");
 }
 
 function AETextGetAlignment(textLayer) {
@@ -824,10 +830,9 @@ function AEConvertFill(fill, hostingLayer) {
         blendMode: AEStyleFillGetBlendingModeCode(fill),
       };
     case sketch.Style.FillType.Pattern:
-      const base64ImageData = AELayerExportPNGAsBase64String(hostingLayer);
       return {
         type: "Image",
-        imgData: base64ImageData,
+        imgData: NSImageToPNGAsBase64String(fill.pattern.image.nsimage),
       };
     case sketch.Style.FillType.Color:
       return {
