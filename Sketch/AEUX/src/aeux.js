@@ -415,8 +415,27 @@ function serializeLayers(_layers, imageCollector) {
         return baseShapeTraits;
 
       case sketch.Types.SymbolInstance:
-        // This symbol instance is invalid, don't bother exporting it
-        if (!layer.master) {
+        // Workaround for a SketchAPI issue in 2025.1 where it wrongly enables
+        // a white background for a SymbolMaster created from a native object
+        // (e.g. via `new SymbolMaster()` in `layer.master` getter) even though
+        // the native object has no background enabled.
+        const masterName = String(layer.sketchObject.symbolMaster()?.name);
+        const masterId = String(layer.sketchObject.symbolMaster()?.objectID());
+        const masterFrame = (() => {
+          const frame = layer.sketchObject.symbolMaster()?.frame();
+          if (!frame) {
+            return new sketch.Rectangle(0, 0, 0, 0);
+          }
+          return new sketch.Rectangle(
+            frame.x(),
+            frame.y(),
+            frame.width(),
+            frame.height()
+          );
+        })();
+
+        if (!masterId) {
+          // This symbol instance is invalid, don't bother exporting it
           return {};
         }
         const shadowDetachedCopy = (() => {
@@ -430,8 +449,8 @@ function serializeLayers(_layers, imageCollector) {
 
         return {
           type: "Group",
-          name: layer.master.name,
-          masterId: layer.master.id,
+          name: masterName || "",
+          masterId: masterId || "",
           id: layer.id,
           frame: AELayerGetFrame(layer),
           fill: fills.length > 0 ? fills : null,
@@ -447,8 +466,7 @@ function serializeLayers(_layers, imageCollector) {
             shadowDetachedCopy?.layers || [],
             imageCollector
           ),
-          symbolFrame: layer.master.frame,
-          bgColor: AEConvertColor(layer.master.background.color),
+          symbolFrame: masterFrame,
           rotation: AELayerGetRotation(layer),
           flip: AELayerGetFlip(layer),
           hasClippingMask: AELayerIsMasked(layer),
