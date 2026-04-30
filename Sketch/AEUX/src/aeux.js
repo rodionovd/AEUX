@@ -582,8 +582,7 @@ function AEShapeGetType(shapeLayer) {
     case sketch.Types.Shape:
       return shapeLayer.layers.length > 0 ? "CompoundShape" : "Path";
     case sketch.Types.ShapePath:
-      // FIXME <rodionovd> not exposed in JS API
-      if (shapeLayer.sketchObject.edited()) {
+      if (shapeLayer.edited) {
         return "Path";
       }
       switch (shapeLayer.shapeType) {
