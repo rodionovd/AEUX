@@ -572,6 +572,8 @@ function AETextGetContents(textLayer) {
       return text.toUpperCase();
     case "lowercase":
       return text.toLowerCase();
+    default:
+      return text;
   }
 }
 
