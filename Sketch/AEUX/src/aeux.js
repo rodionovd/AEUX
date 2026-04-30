@@ -690,12 +690,7 @@ function AELayerGetRotation(layer) {
 }
 
 function AEStyleFillGetBlendingModeCode(fill) {
-  // FIXME <rodionovd> not exposed in JS API
-  const mode = fill.sketchObject?.contextSettings
-    ? fill.sketchObject.contextSettings().blendMode()
-    : sketch.Style.BlendingMode.Normal;
-
-  switch (mode) {
+  switch (fill.blendingMode) {
     case sketch.Style.BlendingMode.Normal:
       return 1;
     case sketch.Style.BlendingMode.Darken:
