@@ -417,26 +417,7 @@ function serializeLayers(_layers, imageCollector) {
         return baseShapeTraits;
 
       case sketch.Types.SymbolInstance:
-        // Workaround for a SketchAPI issue in 2025.1 where it wrongly enables
-        // a white background for a SymbolMaster created from a native object
-        // (e.g. via `new SymbolMaster()` in `layer.master` getter) even though
-        // the native object has no background enabled.
-        const masterName = String(layer.sketchObject.symbolMaster()?.name);
-        const masterId = String(layer.sketchObject.symbolMaster()?.objectID());
-        const masterFrame = (() => {
-          const frame = layer.sketchObject.symbolMaster()?.frame();
-          if (!frame) {
-            return new sketch.Rectangle(0, 0, 0, 0);
-          }
-          return new sketch.Rectangle(
-            frame.x(),
-            frame.y(),
-            frame.width(),
-            frame.height()
-          );
-        })();
-
-        if (!masterId) {
+        if (!layer.master) {
           // This symbol instance is invalid, don't bother exporting it
           return {};
         }
@@ -451,8 +432,8 @@ function serializeLayers(_layers, imageCollector) {
 
         return {
           type: "Group",
-          name: masterName || "",
-          masterId: masterId || "",
+          name: layer.master.name,
+          masterId: layer.master.id,
           id: layer.id,
           frame: AELayerGetFrame(layer),
           fill: fills.length > 0 ? fills : null,
@@ -468,7 +449,10 @@ function serializeLayers(_layers, imageCollector) {
             shadowDetachedCopy?.layers || [],
             imageCollector
           ),
-          symbolFrame: masterFrame,
+          symbolFrame: layer.master.frame,
+          bgColor: layer.master.background.enabled
+            ? AEConvertColor(layer.master.background.color)
+            : undefined,
           rotation: AELayerGetRotation(layer),
           flip: AELayerGetFlip(layer),
           hasClippingMask: AELayerIsMasked(layer),
