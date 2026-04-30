@@ -70,6 +70,8 @@ export function getPluginBrowserWindow(options = { createIfNeeded: true }) {
   browserWindow.webContents.on("detachSymbols", () => {
     detachSelection();
   });
+
+  return browserWindow;
 }
 
 function displayToast(message) {
