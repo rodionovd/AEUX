@@ -277,9 +277,7 @@ function serializeLayers(_layers, imageCollector) {
       return AEConvertShadow(shadow) || [];
     });
     const borders = layer.style.borders.flatMap((border) => {
-      return (
-        AEConvertBorder(border, layer.style.borderOptions, layer.frame) || []
-      );
+      return AEConvertBorder(border, layer) || [];
     });
 
     switch (layer.type) {
@@ -775,9 +773,9 @@ function AEConvertShadow(shadow) {
   };
 }
 
-function AEConvertGradient(gradient, hostingLayerFrame) {
-  const width = hostingLayerFrame.width;
-  const height = hostingLayerFrame.height;
+function AEConvertGradient(gradient, hostingLayer) {
+  const width = hostingLayer.frame.width;
+  const height = hostingLayer.frame.height;
 
   return {
     type: "gradient",
@@ -814,7 +812,7 @@ function AEConvertFill(fill, hostingLayer) {
   switch (fill.fillType) {
     case sketch.Style.FillType.Gradient:
       return {
-        ...AEConvertGradient(fill.gradient, hostingLayer.frame),
+        ...AEConvertGradient(fill.gradient, hostingLayer),
         blendMode: AEStyleFillGetBlendingModeCode(fill),
       };
     case sketch.Style.FillType.Pattern:
@@ -833,7 +831,7 @@ function AEConvertFill(fill, hostingLayer) {
   }
 }
 
-function AEConvertBorder(border, borderOptions) {
+function AEConvertBorder(border, hostingLayer) {
   if (!border.enabled) {
     return null;
   }
@@ -849,9 +847,9 @@ function AEConvertBorder(border, borderOptions) {
   const sharedProperties = {
     enabled: border.enabled,
     width: border.thickness,
-    cap: AEConvertLineEnd(borderOptions.lineEnd),
-    join: AEConvertLineJoin(borderOptions.lineJoin),
-    strokeDashes: borderOptions.dashPattern,
+    cap: AEConvertLineEnd(hostingLayer.style.borderOptions.lineEnd),
+    join: AEConvertLineJoin(hostingLayer.style.borderOptions.lineJoin),
+    strokeDashes: hostingLayer.style.borderOptions.dashPattern,
     blendMode: AEStyleFillGetBlendingModeCode(border),
   };
 
@@ -859,7 +857,7 @@ function AEConvertBorder(border, borderOptions) {
     case sketch.Style.FillType.Gradient:
       return {
         ...sharedProperties,
-        ...AEConvertGradient(border.gradient, hostingLayerFrame),
+        ...AEConvertGradient(border.gradient, hostingLayer),
       };
     case sketch.Style.FillType.Color:
       const color = AEConvertColor(border.color);
