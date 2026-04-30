@@ -421,7 +421,7 @@ function serializeLayers(_layers, imageCollector) {
         }
         const shadowDetachedCopy = (() => {
           // FIXME <rodionovd> not exposed in JS API
-          layer.sketchObject.ensureDetachHasUpdated();
+          layer.sketchObject.sketchapiEnsureDetachHasUpdated();
           let nativeDetachedGroup = layer.sketchObject
             .detachedInstance()
             .detachedGroup_replacements(true, null);
