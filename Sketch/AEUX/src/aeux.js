@@ -285,7 +285,7 @@ function serializeLayers(_layers, imageCollector) {
     switch (layer.type) {
       case sketch.Types.Group:
         const interpretAsComponent =
-          layer.layers.length > 1 && AELayerIsMasked(layer.layers[0]);
+          layer.layers.length > 1 && layer.layers[0].masksSiblings;
         return {
           type: interpretAsComponent ? "Component" : "Group",
           name: "\u25BD " + layer.name,
@@ -299,8 +299,8 @@ function serializeLayers(_layers, imageCollector) {
           // NOTE: this is intentional (a raw number instead of layer.style.blendingMode, which is a string)
           blendMode: layer.style.sketchObject.contextSettings().blendMode(),
           flip: AELayerGetFlip(layer),
-          hasClippingMask: AELayerIsMasked(layer),
-          shouldBreakMaskChain: AELayerBreaksMaskChain(layer),
+          hasClippingMask: layer.masksSiblings,
+          shouldBreakMaskChain: layer.breaksMaskChain,
           layers: serializeLayers(layer.layers, imageCollector),
         };
 
@@ -327,8 +327,8 @@ function serializeLayers(_layers, imageCollector) {
           flip: AELayerGetFlip(layer),
           blendMode: AEConvertBlendingModeToString(layer.style.blendingMode),
           booleanOperation: AELayerGetBooleanOperation(layer),
-          hasClippingMask: AELayerIsMasked(layer),
-          shouldBreakMaskChain: AELayerBreaksMaskChain(layer),
+          hasClippingMask: layer.masksSiblings,
+          shouldBreakMaskChain: layer.breaksMaskChain,
         };
 
         let imageFill = (baseShapeTraits.fill || []).find((fill) => {
@@ -350,7 +350,7 @@ function serializeLayers(_layers, imageCollector) {
             blendMode: AEConvertBlendingModeToString(layer.style.blendingMode),
             rotation: AELayerGetRotation(layer),
             hasClippingMask: true,
-            shouldBreakMaskChain: AELayerBreaksMaskChain(layer),
+            shouldBreakMaskChain: layer.breaksMaskChain,
           };
           // And remove the original image fill from the shape layer
           baseShapeTraits = {
@@ -384,8 +384,8 @@ function serializeLayers(_layers, imageCollector) {
             rotation: AELayerGetRotation(layer),
             blendMode: AEConvertBlendingModeToString(layer.style.blendingMode),
             flip: AELayerGetFlip(layer),
-            hasClippingMask: AELayerIsMasked(layer),
-            shouldBreakMaskChain: AELayerBreaksMaskChain(layer),
+            hasClippingMask: layer.masksSiblings,
+            shouldBreakMaskChain: layer.breaksMaskChain,
             layers:
               layer.type === sketch.Types.ShapePath
                 ? [baseShapeTraits, imageFill]
@@ -455,8 +455,8 @@ function serializeLayers(_layers, imageCollector) {
             : undefined,
           rotation: AELayerGetRotation(layer),
           flip: AELayerGetFlip(layer),
-          hasClippingMask: AELayerIsMasked(layer),
-          shouldBreakMaskChain: AELayerBreaksMaskChain(layer),
+          hasClippingMask: layer.masksSiblings,
+          shouldBreakMaskChain: layer.breaksMaskChain,
         };
 
       case sketch.Types.Text:
@@ -507,8 +507,8 @@ function serializeLayers(_layers, imageCollector) {
           flip: AELayerGetFlip(layer),
           rotation: AELayerGetRotation(layer),
           roundness: AELayerGetCornerRadius(layer),
-          hasClippingMask: AELayerIsMasked(layer),
-          shouldBreakMaskChain: AELayerBreaksMaskChain(layer),
+          hasClippingMask: layer.masksSiblings,
+          shouldBreakMaskChain: layer.breaksMaskChain,
         };
 
       case sketch.Types.Image:
@@ -528,8 +528,8 @@ function serializeLayers(_layers, imageCollector) {
           opacity: AEConvertOpacity(layer.style.opacity),
           blendMode: AEConvertBlendingModeToString(layer.style.blendingMode),
           rotation: AELayerGetRotation(layer),
-          hasClippingMask: AELayerIsMasked(layer),
-          shouldBreakMaskChain: AELayerBreaksMaskChain(layer),
+          hasClippingMask: layer.masksSiblings,
+          shouldBreakMaskChain: layer.breaksMaskChain,
         };
       default:
         return null;
@@ -688,16 +688,6 @@ function AELayerGetFrame(layer) {
 function AELayerGetRotation(layer) {
   const flip = AELayerGetFlip(layer);
   return -layer.transform.rotation * (flip[0] / 100) * (flip[1] / 100);
-}
-
-function AELayerIsMasked(layer) {
-  // FIXME <rodionovd> not exposed in JS API
-  return layer.sketchObject.hasClippingMask();
-}
-
-function AELayerBreaksMaskChain(layer) {
-  // FIXME <rodionovd> not exposed in JS API
-  return layer.sketchObject.shouldBreakMaskChain();
 }
 
 function AEStyleFillGetBlendingModeCode(fill) {
