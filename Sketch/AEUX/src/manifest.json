@@ -4,8 +4,8 @@
   "author": "Adam Plouff",
   "homepage": "https://aeux.io",
   "identifier": "com.wearesumux.AEUX",
-  "version": "2.4.1",
-  "compatibleVersion": "2026.1",
+  "version": "2.4.2",
+  "compatibleVersion": "2026.1.2",
   "bundleVersion": 1,
   "icon": "icon.png",
   "commands": [
@@ -43,8 +43,6 @@
   "menu": {
     "title": "AEUX",
     "items": [
-      "com.wearesumux.AEUX.panel",
-      "-",
       "com.wearesumux.AEUX.push",
       "com.wearesumux.AEUX.detach",
       "com.wearesumux.AEUX.flatten"
