@@ -297,6 +297,7 @@ function serializeLayers(_layers, imageCollector) {
           // NOTE: this is intentional (a raw number instead of layer.style.blendingMode, which is a string)
           blendMode: layer.style.sketchObject.contextSettings().blendMode(),
           flip: AELayerGetFlip(layer),
+          booleanOperation: AELayerGetBooleanOperation(layer),
           hasClippingMask: layer.masksSiblings,
           shouldBreakMaskChain: layer.breaksMaskChain,
           layers: serializeLayers(layer.layers, imageCollector),
@@ -347,6 +348,7 @@ function serializeLayers(_layers, imageCollector) {
             opacity: AEConvertOpacity(layer.style.opacity),
             blendMode: AEConvertBlendingModeToString(layer.style.blendingMode),
             rotation: AELayerGetRotation(layer),
+            booleanOperation: AELayerGetBooleanOperation(layer),
             hasClippingMask: true,
             shouldBreakMaskChain: layer.breaksMaskChain,
           };
@@ -382,6 +384,7 @@ function serializeLayers(_layers, imageCollector) {
             rotation: AELayerGetRotation(layer),
             blendMode: AEConvertBlendingModeToString(layer.style.blendingMode),
             flip: AELayerGetFlip(layer),
+            booleanOperation: AELayerGetBooleanOperation(layer),
             hasClippingMask: layer.masksSiblings,
             shouldBreakMaskChain: layer.breaksMaskChain,
             layers:
@@ -405,11 +408,7 @@ function serializeLayers(_layers, imageCollector) {
             ...baseShapeTraits,
             type: "CompoundShape",
             layers: serializeLayers(layer.layers, imageCollector),
-            booleanOperation:
-              // Note: Intentionally grabbing the boolean op from the first compound layer
-              layer.layers.length > 0
-                ? AELayerGetBooleanOperation(layer.layers[0])
-                : AELayerGetBooleanOperation(layer),
+            booleanOperation: AELayerGetBooleanOperation(layer)
           };
         }
         return baseShapeTraits;
@@ -453,6 +452,7 @@ function serializeLayers(_layers, imageCollector) {
             : undefined,
           rotation: AELayerGetRotation(layer),
           flip: AELayerGetFlip(layer),
+          booleanOperation: AELayerGetBooleanOperation(shadowDetachedCopy),
           hasClippingMask: layer.masksSiblings,
           shouldBreakMaskChain: layer.breaksMaskChain,
         };
@@ -505,6 +505,7 @@ function serializeLayers(_layers, imageCollector) {
           flip: AELayerGetFlip(layer),
           rotation: AELayerGetRotation(layer),
           roundness: AELayerGetCornerRadius(layer),
+          booleanOperation: AELayerGetBooleanOperation(layer),
           hasClippingMask: layer.masksSiblings,
           shouldBreakMaskChain: layer.breaksMaskChain,
         };
@@ -526,6 +527,7 @@ function serializeLayers(_layers, imageCollector) {
           opacity: AEConvertOpacity(layer.style.opacity),
           blendMode: AEConvertBlendingModeToString(layer.style.blendingMode),
           rotation: AELayerGetRotation(layer),
+          booleanOperation: AELayerGetBooleanOperation(layer),
           hasClippingMask: layer.masksSiblings,
           shouldBreakMaskChain: layer.breaksMaskChain,
         };
@@ -653,6 +655,10 @@ function AEShapeGetPath(shape) {
 
 function AELayerGetBooleanOperation(layer) {
   // FIXME <rodionovd> not exposed in JS API
+  if (layer.layers?.length > 0) {
+    // Note: Intentionally grabbing the boolean op from the first child
+    return layer.layers[0].sketchObject.booleanOperation();
+  }
   return layer.sketchObject.booleanOperation();
 }
 
