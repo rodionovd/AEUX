@@ -402,14 +402,14 @@ function serializeLayers(_layers, imageCollector) {
 
         if (layer.type == sketch.Types.Shape) {
           return {
+            ...baseShapeTraits,
             type: "CompoundShape",
             layers: serializeLayers(layer.layers, imageCollector),
             booleanOperation:
-              // Note: this is intentional
+              // Note: Intentionally grabbing the boolean op from the first compound layer
               layer.layers.length > 0
                 ? AELayerGetBooleanOperation(layer.layers[0])
                 : AELayerGetBooleanOperation(layer),
-            ...baseShapeTraits,
           };
         }
         return baseShapeTraits;
